@@ -1,0 +1,114 @@
+name: lede-auto-build
+
+# 触发条件:
+# 1. 向 main 推送 devices/ 下的配置文件变化 (新增/修改设备配置)
+# 2. 手动触发 (workflow_dispatch), 可指定设备名, 留空 = 编译 devices/ 下全部设备
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'devices/**'
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "要编译的设备名 (devices/ 下配置文件名，不含 .config 后缀)，留空编译全部"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lede-build
+  cancel-in-progress: false
+
+jobs:
+  # 枚举待编译设备: 手动触发指定设备时只编该设备, 否则遍历 devices/ 下全部 .config
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      devices: ${{ steps.list.outputs.devices }}
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 生成设备列表
+        id: list
+        env:
+          INPUT_DEVICE: ${{ inputs.device }}
+        run: |
+          python3 -c "
+          import json, os, glob
+          d = os.environ.get('INPUT_DEVICE', '').strip()
+          if d:
+              devices = [d]
+          else:
+              devices = sorted(os.path.basename(p)[:-len('.config')]
+                               for p in glob.glob('devices/*.config'))
+          print(f'devices={json.dumps(devices)}')
+          " >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        device: ${{ fromJSON(needs.plan.outputs.devices) }}
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装编译依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ccache g++-multilib g++-aarch64-linux-gnu \
+            flex bison gawk libssl-dev libffi-dev libreadline-dev libncurses-dev \
+            xz-utils zlib1g-dev liblz4-tool wget git ca-certificates
+
+      - name: 编译固件 (${{ matrix.device }})
+        env:
+          DEVICE_NAME: ${{ matrix.device }}
+          JOBS: 4
+        run: |
+          bash build.sh
+          # 产物校验: 无 img 产物视为编译失败
+          if ! ls bin/*.img* >/dev/null 2>&1; then
+            echo "错误: bin/ 下没有固件产物" >&2
+            exit 1
+          fi
+          ls -lh bin/
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.device }}
+          path: bin/
+          if-no-files-found: error
+
+  release:
+    needs: [plan, build]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 下载全部设备产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 整理固件目录
+        run: |
+          mkdir -p firmware
+          find artifacts -name '*.img*' -exec cp -v {} firmware/ \;
+          ls -lh firmware/
+
+      - name: 发布 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="build-$(date -u +%Y%m%d-%H%M%S)"
+          gh release create "$TAG" \
+            --title "LEDE 自动编译固件 $(date -u +%Y-%m-%d\ %H:%M\ UTC)" \
+            --notes "由 devices/ 配置自动编译 (commit: ${{ github.sha }})" \
+            firmware/*.img*
+          echo "已发布 Release: $TAG"
