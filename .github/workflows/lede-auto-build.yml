@@ -64,11 +64,13 @@ jobs:
         # (g++-aarch64-linux-gnu 在 amd64 常规源不可安装, 勿加回)
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential ccache g++-multilib \
+          sudo apt-get install -y build-essential ccache \
+            gcc-multilib g++-multilib clang \
             flex bison gawk libssl-dev libffi-dev libreadline-dev libncurses-dev \
             libelf-dev libgmp-dev libmpc-dev libmpfr-dev libattr1-dev \
             xz-utils zlib1g-dev liblz4-tool pkg-config \
             python3 python3-pip python3-setuptools \
+            gettext rsync swig unzip file \
             wget git ca-certificates
 
       - name: 编译固件 (${{ matrix.device }})
