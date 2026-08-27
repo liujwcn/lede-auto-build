@@ -36,10 +36,15 @@ if grep -q '^CONFIG_FEED_qmodem=y' "../devices/${DEVICE_NAME}.config"; then
   fi
 fi
 
-# 4. 更新 feeds 并编译
+# 4. 同步配置: 设备配置可能落后于当前 LEDE master 的 Kconfig,
+#    先重新同步 (非交互, 保留已有选择, 新增符号取默认值)
+make defconfig
+
+# 5. 更新 feeds 并编译 (feeds 更新后配置可能再次不同步, 需再同步一次)
 make update
+make defconfig
 make -j"$JOBS"
 
-# 5. 收集产物到仓库根目录 bin/
+# 6. 收集产物到仓库根目录 bin/
 mkdir -p ../bin
 cp -v bin/targets/*/*/*.img* ../bin/ 2>/dev/null || true
