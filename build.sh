@@ -40,8 +40,10 @@ fi
 #    先重新同步 (非交互, 保留已有选择, 新增符号取默认值)
 make defconfig
 
-# 5. 更新 feeds 并编译 (feeds 更新后配置可能再次不同步, 需再同步一次)
-make update
+# 5. 更新 feeds 并编译 (LEDE 无 make update 目标, 需直接调用 scripts/feeds;
+#    feeds 更新后配置可能再次不同步, 需再同步一次)
+./scripts/feeds update -a
+./scripts/feeds install -a
 make defconfig
 make -j"$JOBS"
 
