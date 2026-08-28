@@ -14,6 +14,10 @@ on:
         description: "要编译的设备名 (devices/ 下配置文件名，不含 .config 后缀)，留空编译全部"
         required: false
         default: ""
+      verbose:
+        description: "输出详细编译日志 (make V=s)，用于定位编译失败根因"
+        required: false
+        default: "false"
 
 permissions:
   contents: write
@@ -69,7 +73,7 @@ jobs:
             flex bison gawk libssl-dev libffi-dev libreadline-dev libncurses-dev \
             libelf-dev libgmp-dev libmpc-dev libmpfr-dev libattr1-dev \
             xz-utils zlib1g-dev liblz4-tool pkg-config \
-            python3 python3-pip python3-setuptools \
+            python3 python3-pip python3-setuptools python3-dev \
             gettext rsync swig unzip file \
             wget git ca-certificates
 
@@ -77,6 +81,7 @@ jobs:
         env:
           DEVICE_NAME: ${{ matrix.device }}
           JOBS: 4
+          VERBOSE: ${{ inputs.verbose }}
         run: |
           bash build.sh
           # 产物校验: 无 img 产物视为编译失败
